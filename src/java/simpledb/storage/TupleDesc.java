@@ -68,6 +68,14 @@ public class TupleDesc implements Serializable {
 
     private final List<TDItem> fields;
 
+    public TupleDesc(TupleDesc source, String tableAlias) {
+        List<TDItem> fields = new ArrayList<>(source.fields.size());
+        for(TDItem item : source.fields) {
+            fields.add(new TDItem(item.fieldType, tableAlias == null ? "" : tableAlias + "." + item.fieldName));
+        }
+        this.fields = fields;
+    }
+
 
     /**
      * Create a new TupleDesc when merge two old TupleDesc
