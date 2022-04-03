@@ -82,7 +82,11 @@ public class BufferPool {
         throws TransactionAbortedException, DbException {
         // some code goes here
         Page res = pageMap.getOrDefault(pid, null);
-        if(res == null) throw new DbException("No page");
+        if(res == null) {
+            DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
+            res = file.readPage(pid);
+            pageMap.put(pid, res);
+        }
         return res;
     }
 
