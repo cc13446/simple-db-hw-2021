@@ -103,7 +103,6 @@ public class Tuple implements Serializable {
         for (Field f : fields) {
             sb.append(f.toString()).append("\t");
         }
-        sb.append("\n");
         return sb.toString();
     }
 
