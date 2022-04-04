@@ -14,6 +14,12 @@ public class Join extends Operator {
 
     private static final long serialVersionUID = 1L;
 
+    private final JoinPredicate joinPredicate;
+    private OpIterator child1;
+    private OpIterator child2;
+
+    private Tuple tuple1;
+
     /**
      * Constructor. Accepts two children to join and the predicate to join them
      * on
@@ -27,11 +33,15 @@ public class Join extends Operator {
      */
     public Join(JoinPredicate p, OpIterator child1, OpIterator child2) {
         // some code goes here
+        this.joinPredicate = p;
+        this.child1 = child1;
+        this.child2 = child2;
+        this.tuple1 = null;
     }
 
     public JoinPredicate getJoinPredicate() {
         // some code goes here
-        return null;
+        return this.joinPredicate;
     }
 
     /**
@@ -41,7 +51,7 @@ public class Join extends Operator {
      * */
     public String getJoinField1Name() {
         // some code goes here
-        return null;
+        return this.child1.getTupleDesc().getFieldName(this.joinPredicate.getField1());
     }
 
     /**
@@ -51,7 +61,7 @@ public class Join extends Operator {
      * */
     public String getJoinField2Name() {
         // some code goes here
-        return null;
+        return this.child2.getTupleDesc().getFieldName(this.joinPredicate.getField2());
     }
 
     /**
@@ -60,20 +70,31 @@ public class Join extends Operator {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        return null;
+        return TupleDesc.merge(this.child1.getTupleDesc(), this.child2.getTupleDesc());
     }
 
     public void open() throws DbException, NoSuchElementException,
             TransactionAbortedException {
         // some code goes here
+        this.child1.open();
+        this.child2.open();
+        this.tuple1 = null;
+        super.open();
     }
 
     public void close() {
         // some code goes here
+        this.child1.close();
+        this.child2.close();
+        this.tuple1 = null;
+        super.close();
     }
 
     public void rewind() throws DbException, TransactionAbortedException {
         // some code goes here
+        this.child1.rewind();
+        this.child2.rewind();
+        this.tuple1 = null;
     }
 
     /**
@@ -96,18 +117,58 @@ public class Join extends Operator {
      */
     protected Tuple fetchNext() throws TransactionAbortedException, DbException {
         // some code goes here
+        if (tuple1 == null && !child1.hasNext()) {
+            return null;
+        }
+        if (tuple1 == null && child1.hasNext()) {
+            tuple1 = child1.next();
+        }
+        Tuple tuple2 = null;
+        while(!joinPredicate.filter(tuple1, tuple2)) {
+            if (child2.hasNext()) {
+                tuple2 = child2.next();
+            } else if (!child1.hasNext()) {
+                return null;
+            } else {
+                tuple1 = child1.next();
+                child2.rewind();
+                child2.open();
+                if (!child2.hasNext()) {
+                    return null;
+                } else {
+                    tuple2 = child2.next();
+                }
+            }
+        }
+        if (tuple1 != null && tuple2 != null) {
+            TupleDesc td = this.getTupleDesc();
+            Tuple res = new Tuple(td);
+            for (int i = 0; i < tuple1.getTupleDesc().numFields(); i++) {
+                res.setField(i, tuple1.getField(i));
+            }
+            for (int i = tuple1.getTupleDesc().numFields(); i < td.numFields(); i++) {
+                res.setField(i, tuple2.getField(i - tuple1.getTupleDesc().numFields()));
+            }
+            return res;
+        }
         return null;
     }
 
     @Override
     public OpIterator[] getChildren() {
         // some code goes here
-        return null;
+        OpIterator[] res = new OpIterator[2];
+        res[0] = this.child1;
+        res[1] = this.child2;
+        return res;
     }
 
     @Override
     public void setChildren(OpIterator[] children) {
         // some code goes here
+        assert (children.length > 1);
+        this.child1 = children[0];
+        this.child2 = children[1];
     }
 
 }
