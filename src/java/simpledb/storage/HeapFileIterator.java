@@ -18,16 +18,20 @@ public class HeapFileIterator extends AbstractDbFileIterator{
     private HeapPage page;
     private Iterator<Tuple> tuples;
 
+    private boolean open;
+
     public HeapFileIterator(TransactionId tid, int tableId, int numPages) {
         super();
         this.transactionId = tid;
         this.tableId = tableId;
         this.numPages = numPages;
         this.nextPageNo = 0;
+        this.open = false;
     }
 
     @Override
     protected Tuple readNext() throws DbException, TransactionAbortedException {
+        if (!this.open) throw new DbException("the iterator is not open");
         if (this.page == null) return null;
         if (this.tuples == null) this.tuples = this.page.iterator();
         if (this.tuples.hasNext()) {
@@ -49,6 +53,7 @@ public class HeapFileIterator extends AbstractDbFileIterator{
 
     @Override
     public void open() throws DbException, TransactionAbortedException {
+        this.open = true;
         this.nextPageNo = 0;
         while(this.nextPageNo < this.numPages) {
             Page page = Database.getBufferPool().getPage(this.transactionId, new HeapPageId(this.tableId, this.nextPageNo), Permissions.READ_ONLY);
@@ -63,6 +68,7 @@ public class HeapFileIterator extends AbstractDbFileIterator{
     @Override
     public void close() {
         super.close();
+        this.open = false;
         this.page = null;
     }
 
