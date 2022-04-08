@@ -36,8 +36,39 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
+    public static int getPageSize() {
+        return pageSize;
+    }
+
+    // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
+    public static void setPageSize(int pageSize) {
+        BufferPool.pageSize = pageSize;
+    }
+
+    // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
+    public static void resetPageSize() {
+        BufferPool.pageSize = DEFAULT_PAGE_SIZE;
+    }
+
+    static class ClockItem {
+        private final PageId pageId;
+        public boolean flag;
+
+        public ClockItem(PageId pageId, boolean flag) {
+            this.pageId = pageId;
+            this.flag = flag;
+        }
+
+        public PageId getPageId() {
+            return pageId;
+        }
+    }
+
     private final Map<PageId, Page> pageMap;
     private final int numPages;
+
+    private final ClockItem[] clocks;
+    private int clockIndex;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -48,20 +79,12 @@ public class BufferPool {
         // some code goes here
         this.numPages = numPages;
         this.pageMap = new HashMap<>();
+        this.clocks = new ClockItem[this.numPages];
+        clockIndex = 0;
     }
-    
-    public static int getPageSize() {
-      return pageSize;
-    }
-    
-    // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
-    public static void setPageSize(int pageSize) {
-    	BufferPool.pageSize = pageSize;
-    }
-    
-    // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
-    public static void resetPageSize() {
-    	BufferPool.pageSize = DEFAULT_PAGE_SIZE;
+
+    private void nextClockIndex() {
+        this.clockIndex = (this.clockIndex + 1) % this.numPages;
     }
 
     /**
@@ -86,7 +109,12 @@ public class BufferPool {
         if(res == null) {
             DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
             res = file.readPage(pid);
+            if (pageMap.size() >= numPages) {
+                this.evictPage();
+            }
             pageMap.put(pid, res);
+            this.clocks[this.clockIndex] = new ClockItem(pid, true);
+            this.nextClockIndex();
         }
         return res;
     }
@@ -156,7 +184,12 @@ public class BufferPool {
         DbFile file = Database.getCatalog().getDatabaseFile(tableId);
         List<Page> dirties = file.insertTuple(tid, t);
         for (Page page : dirties) {
+            if (pageMap.size() >= numPages) {
+                this.evictPage();
+            }
             this.pageMap.put(page.getId(), page);
+            this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
+            this.nextClockIndex();
         }
     }
 
@@ -180,7 +213,12 @@ public class BufferPool {
         DbFile file = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
         List<Page> dirties = file.deleteTuple(tid, t);
         for (Page page : dirties) {
+            if (pageMap.size() >= numPages) {
+                this.evictPage();
+            }
             this.pageMap.put(page.getId(), page);
+            this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
+            this.nextClockIndex();
         }
     }
 
@@ -192,7 +230,11 @@ public class BufferPool {
     public synchronized void flushAllPages() throws IOException {
         // some code goes here
         // not necessary for lab1
-
+        for (Map.Entry<PageId, Page> entry : pageMap.entrySet()) {
+            if (entry.getValue().isDirty() != null) {
+                flushPage(entry.getKey());
+            }
+        }
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -206,6 +248,14 @@ public class BufferPool {
     public synchronized void discardPage(PageId pid) {
         // some code goes here
         // not necessary for lab1
+        pageMap.remove(pid);
+        for (int i = 0; i < clocks.length; i++) {
+            if (clocks[i] != null && clocks[i].pageId.equals(pid)) {
+                clocks[i] = null;
+                this.clockIndex = i;
+                break;
+            }
+        }
     }
 
     /**
@@ -215,6 +265,11 @@ public class BufferPool {
     private synchronized void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
+        Page page = pageMap.getOrDefault(pid, null);
+        if (page == null) return;
+        if (page.isDirty() != null) return;
+        Database.getCatalog().getDatabaseFile(page.getId().getTableId()).writePage(page);
+        page.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -231,6 +286,20 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        while(true) {
+            if (this.clocks[this.clockIndex] != null && this.clocks[this.clockIndex].flag) {
+                this.clocks[this.clockIndex].flag = false;
+                this.nextClockIndex();
+            } else if (this.clocks[this.clockIndex] != null && !this.clocks[this.clockIndex].flag) {
+                try {
+                    this.flushPage(this.clocks[this.clockIndex].pageId);
+                    this.pageMap.remove(this.clocks[this.clockIndex].pageId);
+                    break;
+                } catch (IOException e) {
+                    throw new DbException("Flushes the page to disk fail");
+                }
+            }
+        }
     }
 
 }

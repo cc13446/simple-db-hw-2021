@@ -298,7 +298,7 @@ public class HeapPage implements Page {
             dirtyQueue.remove(tid);
             dirtyQueue.push(tid);
         } else {
-            dirtyQueue.remove(tid);
+            dirtyQueue.clear();
         }
     }
 
