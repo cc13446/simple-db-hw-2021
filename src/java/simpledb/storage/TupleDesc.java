@@ -240,7 +240,7 @@ public class TupleDesc implements Serializable {
             return false;
         } else {
             for (int i = 0; i < this.fields.size(); i++) {
-                if (!this.fields.get(i).equals(other.fields.get(i))) {
+                if (!this.fields.get(i).fieldType.equals(other.fields.get(i).fieldType)) {
                     return false;
                 }
             }
