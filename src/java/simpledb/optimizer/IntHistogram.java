@@ -2,9 +2,35 @@ package simpledb.optimizer;
 
 import simpledb.execution.Predicate;
 
+import java.util.Arrays;
+import java.util.List;
+
 /** A class to represent a fixed-width histogram over a single integer-based field.
  */
 public class IntHistogram {
+
+    static class Bucket {
+        public final int min;
+        public int max;
+        public int count;
+
+        public Bucket(int min, int max, int count) {
+            this.min = min;
+            this.max = max;
+            this.count = count;
+        }
+
+        @Override
+        public String toString() {
+            return "Bucket{" + "min=" + min + ", max=" + max + ", count=" + count + '}';
+        }
+    }
+
+    private final List<Bucket> bucketList;
+    private final int max;
+    private final int min;
+    private final double interval;
+    private int count;
 
     /**
      * Create a new IntHistogram.
@@ -24,6 +50,25 @@ public class IntHistogram {
      */
     public IntHistogram(int buckets, int min, int max) {
     	// some code goes here
+        this.min = min;
+        this.max = max;
+        this.interval = (max - min + 1) / (double) buckets;
+        this.count = 0;
+
+        Bucket[] temp = new Bucket[buckets];
+        for (int i = 0; i < buckets; i++) {
+            temp[i] = new Bucket(bucketBound(i), bucketBound(i + 1), 0);
+        }
+        temp[buckets - 1].max = max + 1;
+        this.bucketList = Arrays.asList(temp);
+    }
+
+    private int bucketBound(int i) {
+        return (int)(this.min + this.interval * i);
+    }
+
+    private int bucketIndex(int val) {
+        return (int)((val - min) /this.interval);
     }
 
     /**
@@ -32,6 +77,10 @@ public class IntHistogram {
      */
     public void addValue(int v) {
     	// some code goes here
+        assert(v >= this.min && v <= this.max);
+        int index = bucketIndex(v);
+        this.bucketList.get(index).count++;
+        this.count++;
     }
 
     /**
@@ -45,9 +94,77 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
-
     	// some code goes here
-        return -1.0;
+
+        int index = bucketIndex(v);
+        if (op == Predicate.Op.EQUALS) {
+            if (v < this.min || v > this.max) {
+                return 0;
+            }
+            Bucket bucket = bucketList.get(index);
+            return bucket.count / (double) (bucket.max - bucket.min) / this.count;
+
+        } else if (op == Predicate.Op.NOT_EQUALS) {
+            if (v < this.min || v > this.max) {
+                return 1;
+            }
+            Bucket bucket = bucketList.get(index);
+            return 1 - bucket.count / (double) (bucket.max - bucket.min) / this.count;
+        } else if (op == Predicate.Op.GREATER_THAN) {
+            if (v < this.min) {
+                return 1;
+            }
+            if (v > this.max) {
+                return 0;
+            }
+            int greatThanCount = 0;
+            for (int i = index + 1; i < this.bucketList.size(); i++) {
+                greatThanCount += bucketList.get(i).count;
+            }
+            Bucket bucket = bucketList.get(index);
+            return ((bucket.max - v) * bucket.count / (double) (bucket.max - bucket.min) + greatThanCount) / this.count;
+        } else if (op == Predicate.Op.GREATER_THAN_OR_EQ) {
+            if (v <= this.min) {
+                return 1;
+            }
+            if (v > this.max) {
+                return 0;
+            }
+            int greatThanOrEqCount = 0;
+            for (int i = index + 1; i < this.bucketList.size(); i++) {
+                greatThanOrEqCount += bucketList.get(i).count;
+            }
+            Bucket bucket = bucketList.get(index);
+            return ((bucket.max - v + 1) * bucket.count / (double) (bucket.max - bucket.min) + greatThanOrEqCount) / this.count;
+        } else if (op == Predicate.Op.LESS_THAN) {
+            if (v < this.min) {
+                return 0;
+            }
+            if (v > this.max) {
+                return 1;
+            }
+            int lessThanCount = 0;
+            for (int i = index - 1; i >= 0; i--) {
+                lessThanCount += bucketList.get(i).count;
+            }
+            Bucket bucket = bucketList.get(index);
+            return ((v - bucket.min) * bucket.count / (double) (bucket.max - bucket.min) + lessThanCount) / this.count;
+        } else if (op == Predicate.Op.LESS_THAN_OR_EQ) {
+            if (v < this.min) {
+                return 0;
+            }
+            if (v >= this.max) {
+                return 1;
+            }
+            int lessThanOrEqCount = 0;
+            for (int i = index - 1; i >= 0; i--) {
+                lessThanOrEqCount += bucketList.get(i).count;
+            }
+            Bucket bucket = bucketList.get(index);
+            return ((v - bucket.min + 1) * bucket.count / (double) (bucket.max - bucket.min) + lessThanOrEqCount) / this.count;
+        } else {
+            throw new UnsupportedOperationException("Unsupported Operation For IntField" + op);
+        }
     }
     
     /**
@@ -67,8 +184,16 @@ public class IntHistogram {
     /**
      * @return A string describing this histogram, for debugging purposes
      */
+    @Override
     public String toString() {
-        // some code goes here
-        return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("max:").append(this.max).append("\n");
+        sb.append("min:").append(this.min).append("\n");
+        sb.append("interval:").append(this.interval).append("\n");
+        sb.append("count:").append(this.count).append("\n");
+        for (int i = 0; i < bucketList.size(); i++) {
+            sb.append("buckets[").append(i).append("]:").append(this.bucketList.get(i).toString()).append("\n");
+        }
+        return sb.toString();
     }
 }
