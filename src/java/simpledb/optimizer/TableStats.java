@@ -1,11 +1,14 @@
 package simpledb.optimizer;
 
 import simpledb.common.Database;
+import simpledb.common.DbException;
 import simpledb.common.Type;
 import simpledb.execution.Predicate;
 import simpledb.execution.SeqScan;
 import simpledb.storage.*;
 import simpledb.transaction.Transaction;
+import simpledb.transaction.TransactionAbortedException;
+import simpledb.transaction.TransactionId;
 
 import java.util.HashMap;
 import java.util.Iterator;
@@ -54,9 +57,9 @@ public class TableStats {
 
         System.out.println("Computing table stats.");
         while (tableIt.hasNext()) {
-            int tableid = tableIt.next();
-            TableStats s = new TableStats(tableid, IOCOSTPERPAGE);
-            setTableStats(Database.getCatalog().getTableName(tableid), s);
+            int tableId = tableIt.next();
+            TableStats s = new TableStats(tableId, IOCOSTPERPAGE);
+            setTableStats(Database.getCatalog().getTableName(tableId), s);
         }
         System.out.println("Done.");
     }
@@ -68,17 +71,25 @@ public class TableStats {
      */
     static final int NUM_HIST_BINS = 100;
 
+    private final Map<Integer, StringHistogram> stringHistogramMap;
+    private final Map<Integer, IntHistogram> intHistogramMap;
+
+    private final int tableId;
+    private final int ioCostPerPage;
+
+    private int tupleNums;
+
     /**
      * Create a new TableStats object, that keeps track of statistics on each
      * column of a table
      * 
-     * @param tableid
+     * @param tableId
      *            The table over which to compute statistics
      * @param ioCostPerPage
      *            The cost per page of IO. This doesn't differentiate between
      *            sequential-scan IO and disk seeks.
      */
-    public TableStats(int tableid, int ioCostPerPage) {
+    public TableStats(int tableId, int ioCostPerPage) {
         // For this function, you'll have to get the
         // DbFile for the table in question,
         // then scan through its tuples and calculate
@@ -87,6 +98,72 @@ public class TableStats {
         // necessarily have to (for example) do everything
         // in a single scan of the table.
         // some code goes here
+        this.tableId = tableId;
+        this.ioCostPerPage = ioCostPerPage;
+        this.stringHistogramMap = new HashMap<>();
+        this.intHistogramMap = new HashMap<>();
+        this.tupleNums = 0;
+
+        TupleDesc tupleDesc = Database.getCatalog().getTupleDesc(this.tableId);
+        int[] min = new int[tupleDesc.numFields()];
+        int[] max = new int[tupleDesc.numFields()];
+        for (int i = 0; i < tupleDesc.numFields(); i++) {
+            min[i] = Integer.MAX_VALUE;
+            max[i] = Integer.MIN_VALUE;
+        }
+
+        SeqScan scan = new SeqScan(new TransactionId(),this.tableId,"");
+        try {
+            scan.open();
+            while (scan.hasNext()) {
+                this.tupleNums++;
+                Tuple t = scan.next();
+                for (int i = 0; i < tupleDesc.numFields(); i++) {
+                    if (tupleDesc.getFieldType(i).equals(Type.STRING_TYPE)) {
+                        continue;
+                    }
+                    min[i] = Math.min(min[i], ((IntField) t.getField(i)).getValue());
+                    max[i] = Math.max(max[i], ((IntField) t.getField(i)).getValue());
+                }
+
+            }
+            scan.close();
+        } catch (TransactionAbortedException | DbException e) {
+            e.printStackTrace();
+        }
+
+
+        for (int i = 0; i < tupleDesc.numFields(); i++) {
+            Type t = tupleDesc.getFieldType(i);
+            if (t == Type.INT_TYPE) {
+                intHistogramMap.put(i, new IntHistogram(NUM_HIST_BINS, min[i], max[i]));
+            } else if (t == Type.STRING_TYPE){
+                stringHistogramMap.put(i, new StringHistogram(NUM_HIST_BINS));
+            } else {
+                throw new IllegalStateException("Unsupported Field Type");
+            }
+        }
+
+        try {
+            scan.rewind();
+            scan.open();
+            while (scan.hasNext()) {
+                Tuple t = scan.next();
+                for (int i = 0; i < tupleDesc.numFields(); i++) {
+                    Field field = t.getField(i);
+                    if(field.getType() == Type.INT_TYPE){
+                        this.intHistogramMap.get(i).addValue(((IntField)field).getValue());
+                    }else if (field.getType() == Type.STRING_TYPE){
+                        this.stringHistogramMap.get(i).addValue(((StringField)field).getValue());
+                    } else {
+                        throw new IllegalStateException("Unsupported Field Type");
+                    }
+                }
+            }
+            scan.close();
+        } catch (TransactionAbortedException | DbException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -103,7 +180,8 @@ public class TableStats {
      */
     public double estimateScanCost() {
         // some code goes here
-        return 0;
+        HeapFile heapFile = (HeapFile)Database.getCatalog().getDatabaseFile(this.tableId);
+        return heapFile.numPages() * ioCostPerPage;
     }
 
     /**
@@ -117,7 +195,8 @@ public class TableStats {
      */
     public int estimateTableCardinality(double selectivityFactor) {
         // some code goes here
-        return 0;
+        double cardinality = this.tupleNums * selectivityFactor;
+        return (int) cardinality;
     }
 
     /**
@@ -150,7 +229,14 @@ public class TableStats {
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
         // some code goes here
-        return 1.0;
+        if(constant.getType() == Type.INT_TYPE){
+            IntField intField = (IntField) constant;
+            return intHistogramMap.get(field).estimateSelectivity(op, intField.getValue());
+        }else{
+            StringField stringField = (StringField) constant;
+            return stringHistogramMap.get(field).estimateSelectivity(op, stringField.getValue());
+        }
+
     }
 
     /**
@@ -158,7 +244,7 @@ public class TableStats {
      * */
     public int totalTuples() {
         // some code goes here
-        return 0;
+        return this.tupleNums;
     }
 
 }

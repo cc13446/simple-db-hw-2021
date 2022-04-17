@@ -50,6 +50,9 @@ public class IntHistogram {
      */
     public IntHistogram(int buckets, int min, int max) {
     	// some code goes here
+        if (buckets > (max - min + 1)) {
+            buckets = max - min + 1;
+        }
         this.min = min;
         this.max = max;
         this.interval = (max - min + 1) / (double) buckets;
