@@ -154,7 +154,7 @@ public class LogicalPlan {
         String table1 = joinField1.split("[.]")[0];
         String pureField = joinField1.split("[.]")[1];
 
-        LogicalSubplanJoinNode lj = new LogicalSubplanJoinNode(table1,pureField, joinField2, pred);
+        LogicalSubPlanJoinNode lj = new LogicalSubPlanJoinNode(table1,pureField, joinField2, pred);
         System.out.println("Added subplan join on " + joinField1);
         joins.add(lj);
     }
@@ -352,7 +352,7 @@ public class LogicalPlan {
         for (LogicalJoinNode lj : joins) {
             OpIterator plan1;
             OpIterator plan2;
-            boolean isSubqueryJoin = lj instanceof LogicalSubplanJoinNode;
+            boolean isSubqueryJoin = lj instanceof LogicalSubPlanJoinNode;
             String t1name, t2name;
 
             if (equivMap.get(lj.t1Alias) != null)
@@ -368,7 +368,7 @@ public class LogicalPlan {
             plan1 = subplanMap.get(t1name);
 
             if (isSubqueryJoin) {
-                plan2 = ((LogicalSubplanJoinNode) lj).subPlan;
+                plan2 = ((LogicalSubPlanJoinNode) lj).subPlan;
                 if (plan2 == null)
                     throw new ParsingException("Invalid subquery.");
             } else {

@@ -10,7 +10,7 @@ import java.util.*;
 /**
  * The Join operator implements the relational join operation.
  */
-public class HashEquiJoin extends Operator {
+public class HashEqualJoin extends Operator {
 
     private static final long serialVersionUID = 1L;
     private final JoinPredicate pred;
@@ -30,7 +30,7 @@ public class HashEquiJoin extends Operator {
      * @param child2
      *            Iterator for the right(inner) relation to join
      */
-    public HashEquiJoin(JoinPredicate p, OpIterator child1, OpIterator child2) {
+    public HashEqualJoin(JoinPredicate p, OpIterator child1, OpIterator child2) {
         this.pred = p;
         this.child1 = child1;
         this.child2 = child2;
