@@ -290,14 +290,26 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        int dirtyNum = 0;
         while(true) {
-            if (this.clocks[this.clockIndex] != null && this.clocks[this.clockIndex].flag) {
+            if (this.clocks[this.clockIndex] == null) {
+                break;
+            }
+            if (this.pageMap.get(this.clocks[this.clockIndex].pageId).isDirty() != null) {
+                this.nextClockIndex();
+                dirtyNum++;
+                if (dirtyNum >= this.numPages) {
+                    throw new DbException("All dirty page");
+                }
+            }
+            if (this.clocks[this.clockIndex].flag) {
                 this.clocks[this.clockIndex].flag = false;
                 this.nextClockIndex();
-            } else if (this.clocks[this.clockIndex] != null && !this.clocks[this.clockIndex].flag) {
+            } else {
                 try {
                     this.flushPage(this.clocks[this.clockIndex].pageId);
                     this.pageMap.remove(this.clocks[this.clockIndex].pageId);
+                    this.clocks[this.clockIndex] = null;
                     break;
                 } catch (IOException e) {
                     throw new DbException("Flushes the page to disk fail");
