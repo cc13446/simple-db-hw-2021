@@ -100,7 +100,7 @@ public class Catalog {
         // some code goes here
         for (int id : tableMap.keySet()) {
             Table table = tableMap.get(id);
-            if (table.tableName.equals(name)) {
+            if (Objects.equals(table.tableName, name)) {
                 assert (id == table.getTableId());
                 return table.getTableId();
             }

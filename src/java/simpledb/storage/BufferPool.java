@@ -197,12 +197,13 @@ public class BufferPool {
         DbFile file = Database.getCatalog().getDatabaseFile(tableId);
         List<Page> dirties = file.insertTuple(tid, t);
         for (Page page : dirties) {
-            if (pageMap.size() >= numPages) {
+            if (!this.pageMap.containsKey(page.getId()) && pageMap.size() >= numPages) {
                 this.evictPage();
+                this.pageMap.put(page.getId(), page);
+                this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
+                this.nextClockIndex();
             }
             this.pageMap.put(page.getId(), page);
-            this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
-            this.nextClockIndex();
         }
     }
 
@@ -226,12 +227,13 @@ public class BufferPool {
         DbFile file = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
         List<Page> dirties = file.deleteTuple(tid, t);
         for (Page page : dirties) {
-            if (pageMap.size() >= numPages) {
+            if (!this.pageMap.containsKey(page.getId()) && pageMap.size() >= numPages) {
                 this.evictPage();
+                this.pageMap.put(page.getId(), page);
+                this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
+                this.nextClockIndex();
             }
             this.pageMap.put(page.getId(), page);
-            this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
-            this.nextClockIndex();
         }
     }
 
