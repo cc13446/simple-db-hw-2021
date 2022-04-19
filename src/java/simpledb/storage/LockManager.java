@@ -118,4 +118,12 @@ public class LockManager {
         }
         return transactionLock.holdsLock(transactionId);
     }
+
+    public void releaseAllLocks(TransactionId tid) {
+        for (PageId pageId : this.lockMap.keySet()) {
+            if (holdsLock(pageId, tid)){
+                this.ReleasePage(pageId, tid);
+            }
+        }
+     }
 }

@@ -8,9 +8,7 @@ import simpledb.transaction.TransactionId;
 
 import java.io.*;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -20,7 +18,7 @@ import java.util.Map;
  * The BufferPool is also responsible for locking;  when a transaction fetches
  * a page, BufferPool checks that the transaction has the appropriate
  * locks to read/write the page.
- * 
+ *
  * @Threadsafe all fields are final
  */
 public class BufferPool {
@@ -28,7 +26,7 @@ public class BufferPool {
     private static final int DEFAULT_PAGE_SIZE = 4096;
 
     private static int pageSize = DEFAULT_PAGE_SIZE;
-    
+
     /** Default number of pages passed to the constructor. This is used by
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
@@ -128,7 +126,7 @@ public class BufferPool {
      * about who needs to call this and why, and why they can run the risk of
      * calling it.
      *
-     * @param tid the ID of the transaction requesting the unlock
+     * @param tid the ID of the transaction requesting to unlock
      * @param pid the ID of the page to unlock
      */
     public void unsafeReleasePage(TransactionId tid, PageId pid) {
@@ -140,11 +138,12 @@ public class BufferPool {
     /**
      * Release all locks associated with a given transaction.
      *
-     * @param tid the ID of the transaction requesting the unlock
+     * @param tid the ID of the transaction requesting to unlock
      */
     public void transactionComplete(TransactionId tid) {
         // some code goes here
         // not necessary for lab1|lab2
+        this.transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
@@ -164,18 +163,28 @@ public class BufferPool {
     public void transactionComplete(TransactionId tid, boolean commit) {
         // some code goes here
         // not necessary for lab1|lab2
+        try {
+            if (commit) {
+                this.flushPages(tid);
+            } else {
+                this.restorePages(tid);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        this.lockManager.releaseAllLocks(tid);
     }
 
     /**
      * Add a tuple to the specified table on behalf of transaction tid.  Will
-     * acquire a write lock on the page the tuple is added to and any other 
-     * pages that are updated (Lock acquisition is not needed for lab2). 
+     * acquire a write lock on the page the tuple is added to and any other
+     * pages that are updated (Lock acquisition is not needed for lab2).
      * May block if the lock(s) cannot be acquired.
-     * 
+     *
      * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
+     * their markDirty bit, and adds versions of any pages that have
+     * been dirtied to the cache (replacing any existing versions of those pages) so
+     * that future requests see up-to-date pages.
      *
      * @param tid the transaction adding the tuple
      * @param tableId the table to add the tuple to
@@ -203,9 +212,9 @@ public class BufferPool {
      * other pages that are updated. May block if the lock(s) cannot be acquired.
      *
      * Marks any pages that were dirtied by the operation as dirty by calling
-     * their markDirty bit, and adds versions of any pages that have 
-     * been dirtied to the cache (replacing any existing versions of those pages) so 
-     * that future requests see up-to-date pages. 
+     * their markDirty bit, and adds versions of any pages that have
+     * been dirtied to the cache (replacing any existing versions of those pages) so
+     * that future requests see up-to-date pages.
      *
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
@@ -245,7 +254,7 @@ public class BufferPool {
         Needed by the recovery manager to ensure that the
         buffer pool doesn't keep a rolled back page in its
         cache.
-        
+
         Also used by B+ tree files to ensure that deleted pages
         are removed from the cache so they can be reused safely
     */
@@ -271,7 +280,7 @@ public class BufferPool {
         // not necessary for lab1
         Page page = pageMap.getOrDefault(pid, null);
         if (page == null) return;
-        if (page.isDirty() != null) return;
+        if (page.isDirty() == null) return;
         Database.getCatalog().getDatabaseFile(page.getId().getTableId()).writePage(page);
         page.markDirty(false, null);
     }
@@ -281,6 +290,26 @@ public class BufferPool {
     public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
+        for (PageId pageId : pageMap.keySet()) {
+            Page page = this.pageMap.get(pageId);
+            if (page.isDirty() == tid) {
+                flushPage(pageId);
+            }
+        }
+    }
+
+    /** Restore all pages of the specified transaction from disk.
+     */
+    public synchronized void restorePages(TransactionId tid) {
+        // some code goes here
+        // not necessary for lab1|lab2
+        for (PageId pageId : pageMap.keySet()) {
+            Page page = this.pageMap.get(pageId);
+            if (page.isDirty() == tid) {
+                DbFile file = Database.getCatalog().getDatabaseFile(pageId.getTableId());
+                this.pageMap.put(pageId, file.readPage(pageId));
+            }
+        }
     }
 
     /**
@@ -290,15 +319,15 @@ public class BufferPool {
     private synchronized void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
-        int dirtyNum = 0;
+        Set<PageId> pageIdSet = new HashSet<>();
         while(true) {
             if (this.clocks[this.clockIndex] == null) {
                 break;
             }
             if (this.pageMap.get(this.clocks[this.clockIndex].pageId).isDirty() != null) {
                 this.nextClockIndex();
-                dirtyNum++;
-                if (dirtyNum >= this.numPages) {
+                pageIdSet.add(this.clocks[this.clockIndex].pageId);
+                if (pageIdSet.containsAll(this.pageMap.keySet())) {
                     throw new DbException("All dirty page");
                 }
             }
