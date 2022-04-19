@@ -1,9 +1,11 @@
 package simpledb.storage;
 
 import simpledb.common.Permissions;
+import simpledb.transaction.Transaction;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
+import java.security.acl.Owner;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
@@ -76,10 +78,12 @@ public class LockManager {
     }
 
     private final Map<PageId, TransactionLock> lockMap;
+    private final Map<TransactionId, Set<PageId>> wantLockMap;
 
 
     public LockManager() {
         this.lockMap = new ConcurrentHashMap<>();
+        this.wantLockMap = new ConcurrentHashMap<>();
     }
 
     public void LockPage(PageId pageId, TransactionId transactionId, Permissions permissions) throws TransactionAbortedException {
@@ -87,19 +91,29 @@ public class LockManager {
             this.lockMap.put(pageId, new TransactionLock());
         }
         TransactionLock transactionLock = this.lockMap.get(pageId);
+        if (!this.wantLockMap.containsKey(transactionId)) {
+            this.wantLockMap.put(transactionId, ConcurrentHashMap.newKeySet());
+        }
+        this.wantLockMap.get(transactionId).add(pageId);
         boolean acquired = false;
-        long start = System.currentTimeMillis();
-        long timeOut = new Random().nextInt(2000) + 1000;
+        int trys = 0;
         while (!acquired) {
             acquired = transactionLock.acquireLock(transactionId, permissions);
             if (!acquired) {
-                if (System.currentTimeMillis() - start > timeOut) throw new TransactionAbortedException();
                 try {
-                    Thread.sleep(1);
+                    Thread.sleep(10);
+                    trys++;
+                    if (trys % 10 == 0){
+                        deadLock(transactionId);
+                    }
                 } catch (InterruptedException e) {
                     throw new TransactionAbortedException();
                 }
             }
+        }
+        this.wantLockMap.get(transactionId).remove(pageId);
+        if (this.wantLockMap.get(transactionId).isEmpty()) {
+            this.wantLockMap.remove(transactionId);
         }
     }
 
@@ -125,5 +139,33 @@ public class LockManager {
                 this.ReleasePage(pageId, tid);
             }
         }
-     }
+    }
+
+    private void deadLock(TransactionId transactionId) throws TransactionAbortedException{
+        Set<PageId> my = new HashSet<>();
+        for (PageId pageId : this.lockMap.keySet()) {
+            if (holdsLock(pageId, transactionId)) {
+                my.add(pageId);
+            }
+        }
+
+        Set<PageId> want = new HashSet<>(this.wantLockMap.get(transactionId));
+        while (!want.isEmpty()) {
+            Set<PageId> newWant = new HashSet<>();
+            Set<TransactionId> owner = new HashSet<>();
+            for (PageId p : want) {
+                owner.addAll(this.lockMap.getOrDefault(p, new TransactionLock()).transactionIds);
+            }
+            owner.remove(transactionId);
+            for (TransactionId tid : owner) {
+                newWant.addAll(this.wantLockMap.getOrDefault(tid, new HashSet<>()));
+            }
+            for (PageId p : newWant) {
+                if (my.contains(p)) {
+                    throw new TransactionAbortedException();
+                }
+            }
+            want = newWant;
+        }
+    }
 }
