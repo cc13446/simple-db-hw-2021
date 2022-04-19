@@ -14,7 +14,7 @@ import simpledb.storage.PageId;
 import simpledb.transaction.TransactionId;
 
 public class LockingTest extends TestUtil.CreateHeapFile {
-  private PageId p0;
+    private PageId p0;
     private PageId p1;
     private TransactionId tid1, tid2;
 
@@ -45,7 +45,7 @@ public class LockingTest extends TestUtil.CreateHeapFile {
 
     this.p0 = new HeapPageId(empty.getId(), 0);
     this.p1 = new HeapPageId(empty.getId(), 1);
-      PageId p2 = new HeapPageId(empty.getId(), 2);
+    PageId p2 = new HeapPageId(empty.getId(), 2);
     this.tid1 = new TransactionId();
     this.tid2 = new TransactionId();
 
@@ -99,7 +99,7 @@ public class LockingTest extends TestUtil.CreateHeapFile {
     Thread.sleep(TIMEOUT);
     assertEquals(expected, t.acquired());
 
-    // TODO(ghuo): yes, stop() is evil, but this is unit test cleanup
+    // TODO: yes, stop() is evil, but this is unit test cleanup
     t.stop();
   }
 

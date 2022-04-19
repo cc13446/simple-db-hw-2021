@@ -19,17 +19,17 @@ import java.util.concurrent.atomic.AtomicReference;
 public class Database {
     private static final AtomicReference<Database> _instance = new AtomicReference<>(new Database());
     private final Catalog _catalog;
-    private final BufferPool _bufferpool;
+    private final BufferPool _bufferPool;
 
-    private final static String LOGFILENAME = "log";
+    private final static String LOG_FILE_NAME = "log";
     private final LogFile _logfile;
 
     private Database() {
         _catalog = new Catalog();
-        _bufferpool = new BufferPool(BufferPool.DEFAULT_PAGES);
+        _bufferPool = new BufferPool(BufferPool.DEFAULT_PAGES);
         LogFile tmp = null;
         try {
-            tmp = new LogFile(new File(LOGFILENAME));
+            tmp = new LogFile(new File(LOG_FILE_NAME));
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(1);
@@ -45,7 +45,7 @@ public class Database {
 
     /** Return the buffer pool of the static Database instance */
     public static BufferPool getBufferPool() {
-        return _instance.get()._bufferpool;
+        return _instance.get()._bufferPool;
     }
 
     /** Return the catalog of the static Database instance */
@@ -58,16 +58,15 @@ public class Database {
      * return it
      */
     public static BufferPool resetBufferPool(int pages) {
-        java.lang.reflect.Field bufferPoolF=null;
+        java.lang.reflect.Field bufferPoolF;
         try {
-            bufferPoolF = Database.class.getDeclaredField("_bufferpool");
+            bufferPoolF = Database.class.getDeclaredField("_bufferPool");
             bufferPoolF.setAccessible(true);
             bufferPoolF.set(_instance.get(), new BufferPool(pages));
         } catch (NoSuchFieldException | IllegalAccessException | IllegalArgumentException | SecurityException e) {
             e.printStackTrace();
         }
-//        _instance._bufferpool = new BufferPool(pages);
-        return _instance.get()._bufferpool;
+        return _instance.get()._bufferPool;
     }
 
     // reset the database, used for unit tests only.

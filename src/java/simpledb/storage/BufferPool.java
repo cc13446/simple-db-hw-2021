@@ -3,7 +3,6 @@ package simpledb.storage;
 import simpledb.common.Database;
 import simpledb.common.Permissions;
 import simpledb.common.DbException;
-import simpledb.common.DeadlockException;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
@@ -12,7 +11,6 @@ import java.io.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -70,6 +68,8 @@ public class BufferPool {
     private final ClockItem[] clocks;
     private int clockIndex;
 
+    private final LockManager lockManager;
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
@@ -81,6 +81,8 @@ public class BufferPool {
         this.pageMap = new HashMap<>();
         this.clocks = new ClockItem[this.numPages];
         clockIndex = 0;
+
+        this.lockManager = new LockManager();
     }
 
     private void nextClockIndex() {
@@ -105,6 +107,7 @@ public class BufferPool {
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
+        this.lockManager.LockPage(pid, tid, perm);
         Page res = pageMap.getOrDefault(pid, null);
         if(res == null) {
             DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
@@ -131,6 +134,7 @@ public class BufferPool {
     public void unsafeReleasePage(TransactionId tid, PageId pid) {
         // some code goes here
         // not necessary for lab1|lab2
+        this.lockManager.ReleasePage(pid, tid);
     }
 
     /**
@@ -147,7 +151,7 @@ public class BufferPool {
     public boolean holdsLock(TransactionId tid, PageId p) {
         // some code goes here
         // not necessary for lab1|lab2
-        return false;
+        return this.lockManager.holdsLock(p, tid);
     }
 
     /**
