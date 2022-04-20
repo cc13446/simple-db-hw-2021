@@ -531,20 +531,20 @@ public class LogFile {
                 while (true) {
                     try {
                         int type = raf.readInt();
-                        long txid = raf.readLong();
+                        long tid = raf.readLong();
                         switch (type) {
                             case UPDATE_RECORD:
                                 Page beforeImage = readPageData(raf);
                                 Page afterImage = readPageData(raf);
-                                List<Page> l1 = beforePages.getOrDefault(txid, new ArrayList<>());
+                                List<Page> l1 = beforePages.getOrDefault(tid, new ArrayList<>());
                                 l1.add(beforeImage);
-                                beforePages.put(txid, l1);
-                                List<Page> l2 = afterPages.getOrDefault(txid, new ArrayList<>());
+                                beforePages.put(tid, l1);
+                                List<Page> l2 = afterPages.getOrDefault(tid, new ArrayList<>());
                                 l2.add(afterImage);
-                                afterPages.put(txid, l2);
+                                afterPages.put(tid, l2);
                                 break;
                             case COMMIT_RECORD:
-                                committedId.add(txid);
+                                committedId.add(tid);
                                 break;
                             case CHECKPOINT_RECORD:
                                 int numTxs = raf.readInt();
