@@ -9,6 +9,7 @@ import simpledb.transaction.TransactionId;
 import java.io.*;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * BufferPool manages the reading and writing of pages into memory from
@@ -76,7 +77,7 @@ public class BufferPool {
     public BufferPool(int numPages) {
         // some code goes here
         this.numPages = numPages;
-        this.pageMap = new HashMap<>();
+        this.pageMap = new ConcurrentHashMap<>();
         this.clocks = new ClockItem[this.numPages];
         clockIndex = 0;
 
@@ -285,6 +286,9 @@ public class BufferPool {
         Page page = pageMap.getOrDefault(pid, null);
         if (page == null) return;
         if (page.isDirty() == null) return;
+
+        Database.getLogFile().logWrite(page.isDirty(), page.getBeforeImage(), page);
+        Database.getLogFile().force();
         Database.getCatalog().getDatabaseFile(page.getId().getTableId()).writePage(page);
         page.markDirty(false, null);
     }
@@ -296,6 +300,7 @@ public class BufferPool {
         // not necessary for lab1|lab2
         for (PageId pageId : pageMap.keySet()) {
             Page page = this.pageMap.get(pageId);
+            page.setBeforeImage();
             if (page.isDirty() == tid) {
                 flushPage(pageId);
             }

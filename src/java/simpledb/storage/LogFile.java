@@ -90,7 +90,6 @@ public class LogFile {
     final static int LONG_SIZE = 8;
 
     long currentOffset = -1;//protected by this
-//    int pageSize;
     int totalRecords = 0; // for PatchTest //protected by this
 
     final Map<Long,Long> tidToFirstLogRecord = new HashMap<>();
@@ -111,15 +110,6 @@ public class LogFile {
         raf = new RandomAccessFile(f, "rw");
         recoveryUndecided = true;
 
-        // install shutdown hook to force cleanup on close
-        // Runtime.getRuntime().addShutdownHook(new Thread() {
-                // public void run() { shutdown(); }
-            // });
-
-        //XXX WARNING -- there is nothing that verifies that the specified
-        // log file actually corresponds to the current catalog.
-        // This could cause problems since we log tableids, which may or
-        // may not match tableids in the current catalog.
     }
 
     // we're about to append a log record. if we weren't sure whether the
@@ -196,12 +186,12 @@ public class LogFile {
 
         @see Page#getBeforeImage
     */
-    public  synchronized void logWrite(TransactionId tid, Page before,
+    public synchronized void logWrite(TransactionId tid, Page before,
                                        Page after)
         throws IOException  {
         Debug.log("WRITE, offset = " + raf.getFilePointer());
         preAppend();
-        /* update record conists of
+        /* update record consists of
 
            record type
            transaction id
@@ -224,7 +214,7 @@ public class LogFile {
         PageId pid = p.getId();
         int[] pageInfo = pid.serialize();
 
-        //page data is:
+        // page data is:
         // page class name
         // id class name
         // id class bytes
@@ -245,7 +235,6 @@ public class LogFile {
         byte[] pageData = p.getPageData();
         raf.writeInt(pageData.length);
         raf.write(pageData);
-        //        Debug.log ("WROTE PAGE DATA, CLASS = " + pageClassName + ", table = " +  pid.getTableId() + ", page = " + pid.pageno());
     }
 
     Page readPageData(RandomAccessFile raf) throws IOException {
@@ -259,15 +248,15 @@ public class LogFile {
             Class<?> idClass = Class.forName(idClassName);
             Class<?> pageClass = Class.forName(pageClassName);
 
-            Constructor<?>[] idConsts = idClass.getDeclaredConstructors();
+            Constructor<?>[] idConst = idClass.getDeclaredConstructors();
             int numIdArgs = raf.readInt();
             Object[] idArgs = new Object[numIdArgs];
             for (int i = 0; i<numIdArgs;i++) {
                 idArgs[i] = raf.readInt();
             }
-            pid = (PageId)idConsts[0].newInstance(idArgs);
+            pid = (PageId)idConst[0].newInstance(idArgs);
 
-            Constructor<?>[] pageConsts = pageClass.getDeclaredConstructors();
+            Constructor<?>[] pageConst = pageClass.getDeclaredConstructors();
             int pageSize = raf.readInt();
 
             byte[] pageData = new byte[pageSize];
@@ -277,7 +266,7 @@ public class LogFile {
             pageArgs[0] = pid;
             pageArgs[1] = pageData;
 
-            newPage = (Page)pageConsts[0].newInstance(pageArgs);
+            newPage = (Page)pageConst[0].newInstance(pageArgs);
 
             //            Debug.log("READ PAGE OF TYPE " + pageClassName + ", table = " + newPage.getId().getTableId() + ", page = " + newPage.getId().pageno());
         } catch (ClassNotFoundException | InvocationTargetException | IllegalAccessException | InstantiationException e){
@@ -292,7 +281,7 @@ public class LogFile {
         @param tid The transaction that is beginning
 
     */
-    public synchronized  void logXactionBegin(TransactionId tid)
+    public synchronized void logXactionBegin(TransactionId tid)
         throws IOException {
         Debug.log("BEGIN");
         if(tidToFirstLogRecord.get(tid.getId()) != null){
@@ -446,20 +435,66 @@ public class LogFile {
         //print();
     }
 
-    /** Rollback the specified transaction, setting the state of any
-        of pages it updated to their pre-updated state.  To preserve
+    /** Rollback the specified transaction, setting the state of
+        pages it updated to their pre-updated state.  To preserve
         transaction semantics, this should not be called on
         transactions that have already committed (though this may not
         be enforced by this method.)
 
-        @param tid The transaction to rollback
+        @param transactionId The transaction to rollback
     */
-    public void rollback(TransactionId tid)
+    public void rollback(TransactionId transactionId)
         throws NoSuchElementException, IOException {
         synchronized (Database.getBufferPool()) {
             synchronized(this) {
                 preAppend();
                 // some code goes here
+                Long firstLogRecord = tidToFirstLogRecord.get(transactionId.getId());
+                //移动到日志开始的地方
+                raf.seek(firstLogRecord);
+                Set<PageId> set = new HashSet<>();
+                while (true) {
+                    try {
+                        //Each log record begins with an integer type and a long integer transaction id.
+                        int type = raf.readInt();
+                        long tid = raf.readLong();
+                        switch (type) {
+                            case UPDATE_RECORD :
+                                //UPDATE RECORDS consist of two entries, a before image and an
+                                //after image.  These images are serialized Page objects, and can be
+                                //accessed with the LogFile.readPageData() and LogFile.writePageData()
+                                //methods.  See LogFile.print() for an example.
+                                Page beforeImage = readPageData(raf);
+                                Page afterImage = readPageData(raf);
+                                PageId pageId = beforeImage.getId();
+                                if (tid == transactionId.getId() && !set.contains(pageId)) {
+                                    set.add(pageId);
+                                    Database.getBufferPool().discardPage(pageId);
+                                    Database.getCatalog().getDatabaseFile(pageId.getTableId()).writePage(beforeImage);
+                                }
+                                break;
+                            case CHECKPOINT_RECORD:
+                                //CHECKPOINT records consist of active transactions at the time
+                                //the checkpoint was taken and their first log record on disk.  The format
+                                //of the record is an integer count of the number of transactions, as well
+                                //as a long integer transaction id and a long integer first record offset
+                                //for each active transaction.
+                                int txCnt = raf.readInt();
+                                while (txCnt -- > 0) {
+                                    raf.readLong();
+                                    raf.readLong();
+                                }
+                                break;
+                            default:
+                                //others
+                                break;
+                        }
+                        //Each log record ends with a long integer file offset representing the position in the log file where the record began.
+                        raf.readLong();
+                    } catch (EOFException e) {
+                        break;
+                    }
+                }
             }
         }
     }
@@ -487,6 +522,67 @@ public class LogFile {
             synchronized (this) {
                 recoveryUndecided = false;
                 // some code goes here
+                raf = new RandomAccessFile(logFile, "rw");
+                //已提交的事务id集合
+                Set<Long> committedId = new HashSet<>();
+                //存放事务id对应的beforePage和afterPage
+                Map<Long, List<Page>> beforePages = new HashMap<>();
+                Map<Long, List<Page>> afterPages = new HashMap<>();
+                while (true) {
+                    try {
+                        int type = raf.readInt();
+                        long txid = raf.readLong();
+                        switch (type) {
+                            case UPDATE_RECORD:
+                                Page beforeImage = readPageData(raf);
+                                Page afterImage = readPageData(raf);
+                                List<Page> l1 = beforePages.getOrDefault(txid, new ArrayList<>());
+                                l1.add(beforeImage);
+                                beforePages.put(txid, l1);
+                                List<Page> l2 = afterPages.getOrDefault(txid, new ArrayList<>());
+                                l2.add(afterImage);
+                                afterPages.put(txid, l2);
+                                break;
+                            case COMMIT_RECORD:
+                                committedId.add(txid);
+                                break;
+                            case CHECKPOINT_RECORD:
+                                int numTxs = raf.readInt();
+                                while (numTxs -- > 0) {
+                                    raf.readLong();
+                                    raf.readLong();
+                                }
+                                break;
+                            default:
+                                break;
+                        }
+                        //end
+                        raf.readLong();
+
+                    } catch (EOFException e) {
+                        break;
+                    }
+                }
+
+                //处理未提交事务，直接写before-image
+                for (long tid :beforePages.keySet()) {
+                    if (!committedId.contains(tid)) {
+                        List<Page> pages = beforePages.get(tid);
+                        for (Page p : pages) {
+                            Database.getCatalog().getDatabaseFile(p.getId().getTableId()).writePage(p);
+                        }
+                    }
+                }
+
+                //处理已提交事务，直接写after-image
+                for (long tid : committedId) {
+                    if (afterPages.containsKey(tid)) {
+                        List<Page> pages = afterPages.get(tid);
+                        for (Page page : pages) {
+                            Database.getCatalog().getDatabaseFile(page.getId().getTableId()).writePage(page);
+                        }
+                    }
+                }
             }
          }
     }
