@@ -27,15 +27,15 @@ public class BTreeLeafPage extends BTreePage {
 	private int leftSibling; // leaf node or 0
 	private int rightSibling; // leaf node or 0
 
-	public void checkRep(int fieldid, Field lowerBound, Field upperBound, boolean checkoccupancy, int depth) {
+	public void checkRep(int fieldId, Field lowerBound, Field upperBound, boolean checkoccupancy, int depth) {
 		Field prev = lowerBound;
 		assert(this.getId().pgcateg() == BTreePageId.LEAF);
 
 		Iterator<Tuple> it = this.iterator();
 		while (it.hasNext()) {
 			Tuple t = it.next();
-			assert(null == prev || prev.compare(Predicate.Op.LESS_THAN_OR_EQ, t.getField(fieldid)));
-			prev = t.getField(fieldid);
+			assert(null == prev || prev.compare(Predicate.Op.LESS_THAN_OR_EQ, t.getField(fieldId)));
+			prev = t.getField(fieldId);
 			assert(t.getRecordId().getPageId().equals(this.getId()));
 		}
 
