@@ -203,6 +203,7 @@ public class BufferPool {
                 this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
                 this.nextClockIndex();
             }
+            page.markDirty(true, tid);
             this.pageMap.put(page.getId(), page);
         }
     }
@@ -233,6 +234,7 @@ public class BufferPool {
                 this.clocks[this.clockIndex] = new ClockItem(page.getId(), true);
                 this.nextClockIndex();
             }
+            page.markDirty(true, tid);
             this.pageMap.put(page.getId(), page);
         }
     }

@@ -135,7 +135,7 @@ public class BTreeLeafPage extends BTreePage {
         -- used by recovery */
 	public BTreeLeafPage getBeforeImage(){
 		try {
-			byte[] oldDataRef = null;
+			byte[] oldDataRef;
 			synchronized(oldDataLock)
 			{
 				oldDataRef = oldData;
@@ -265,10 +265,10 @@ public class BTreeLeafPage extends BTreePage {
 		}
 
 		// padding
-		int zerolen = BufferPool.getPageSize() - (header.length + td.getSize() * tuples.length + 3 * INDEX_SIZE); //- numSlots * td.getSize();
-		byte[] zeroes = new byte[zerolen];
+		int zeroLen = BufferPool.getPageSize() - (header.length + td.getSize() * tuples.length + 3 * INDEX_SIZE); //- numSlots * td.getSize();
+		byte[] zeroes = new byte[zeroLen];
 		try {
-			dos.write(zeroes, 0, zerolen);
+			dos.write(zeroes, 0, zeroLen);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -339,7 +339,7 @@ public class BTreeLeafPage extends BTreePage {
 
 		// shift records back or forward to fill empty slot and make room for new record
 		// while keeping records in sorted order
-		int goodSlot = -1;
+		int goodSlot;
 		if(emptySlot < lessOrEqKey) {
 			for(int i = emptySlot; i < lessOrEqKey; i++) {
 				moveRecord(i+1, i);
@@ -459,23 +459,23 @@ public class BTreeLeafPage extends BTreePage {
 	 * Returns true if associated slot on this page is filled.
 	 */
 	public boolean isSlotUsed(int i) {
-		int headerbit = i % 8;
-		int headerbyte = (i - headerbit) / 8;
-		return (header[headerbyte] & (1 << headerbit)) != 0;
+		int headerBit = i % 8;
+		int headerByte = (i - headerBit) / 8;
+		return (header[headerByte] & (1 << headerBit)) != 0;
 	}
 
 	/**
 	 * Abstraction to fill or clear a slot on this page.
 	 */
 	private void markSlotUsed(int i, boolean value) {
-		int headerbit = i % 8;
-		int headerbyte = (i - headerbit) / 8;
+		int headerBit = i % 8;
+		int headerByte = (i - headerBit) / 8;
 
 		Debug.log(1, "BTreeLeafPage.setSlot: setting slot %d to %b", i, value);
 		if(value)
-			header[headerbyte] |= 1 << headerbit;
+			header[headerByte] |= 1 << headerBit;
 		else
-			header[headerbyte] &= (0xFF ^ (1 << headerbit));
+			header[headerByte] &= (0xFF ^ (1 << headerBit));
 	}
 
 	/**
@@ -498,7 +498,6 @@ public class BTreeLeafPage extends BTreePage {
 	 * protected method used by the iterator to get the ith tuple out of this page
 	 * @param i - the index of the tuple
 	 * @return the ith tuple in the page
-	 * @throws NoSuchElementException
 	 */
 	Tuple getTuple(int i) throws NoSuchElementException {
 
