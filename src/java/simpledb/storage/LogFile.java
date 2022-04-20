@@ -480,9 +480,10 @@ public class LogFile {
                                 //as a long integer transaction id and a long integer first record offset
                                 //for each active transaction.
                                 int txCnt = raf.readInt();
-                                while (txCnt -- > 0) {
+                                while (txCnt > 0) {
                                     raf.readLong();
                                     raf.readLong();
+                                    txCnt--;
                                 }
                                 break;
                             default:
